@@ -14,21 +14,35 @@
 
 #include "NetworkConnection.h"
 
+using namespace std;
+
 #define NETWORK_ERROR -1
 #define NETWORK_OK     0
-
+//SOMAXCONN = socket max amunt of connections?
 
 int main(int argc, char * argv[])
 {
-	std::vector<std::string> stringVec;
+	vector<string> stringVec;
+	bool done = false;
+	bool isServer = true;
+	string ip;
+	int port;
+	NetworkConnection conn;
 
-	NetworkServer server(SOMAXCONN);//SOMAXCONN = socket max amunt of connections?
-	server.init();
-
-	/*if (waitingForClients)
-	waitForClientConnect();*/
+	if (isServer)
+	{
+		conn.startServer(SOMAXCONN);
+		conn.waitForClientConnect();
+	}
+	else
+		conn.connectToServer(ip);
 	
-	server.shutdown();
+	while (!done)
+	{
+
+			
+	}
+	conn.shutdown();
 
 
 	return 0;

@@ -15,15 +15,19 @@ using namespace std;
 
 class NetworkConnection
 {
-protected:
 	enum SOCKET_TYPE
 	{
 		DATAGRAM_SOCKET = 0,
 		STREAM_SOCKET 
 	};
+	LPHOSTENT hostEntry;
+	SOCKET theSocket;
+	SOCKADDR_IN myInfo;
+	SOCKADDR_IN remoteInfo;
 
 	WORD sockVersion;
 	WSADATA wsaData;
+	string ipAddy;
 
 	int sockfd;
 	int portNumber = 0;
@@ -31,15 +35,24 @@ protected:
 	fd_set master;   // master file descriptor list
 	fd_set read_fds; // temp file descriptor list for select()
 	
+	bool waitingForClients = false;
+	SOCKET listeningSocket;
+	int numListeningConnections;
+	vector<SOCKET> clientConnection;
 
 public:
 	void ReportError(int errorCode, std::string  whichFunc);
 	int fillTheirInfo(SOCKADDR_IN *who, SOCKET daSocket);
-	virtual int init(int socketType) = 0;
-	virtual void shutdown() = 0;
+	
+	int waitForClientConnect();
+	
+	int startServer(int numConnections, int socketType = STREAM_SOCKET);
+	int connectToServer(string ip, int socketType = STREAM_SOCKET);
+	void shutdown();
 	
 	
 	//for stream sockets
+	int ServerBroadcast(char *string);
 	int getData(SOCKET daSocket, char *string);
 	int sendData(SOCKET daSocket, char *string);
 
@@ -52,33 +65,5 @@ public:
 	
 };
 
-class NetworkServer : public NetworkConnection
-{
-private:
-	bool waitingForClients = false;
-	SOCKADDR_IN myInfo;
-	SOCKADDR_IN theirInfo;
-	vector<SOCKET> clientConnection;
-	SOCKET listeningSocket;
-	int numListeningConnections;
-	int waitForClientConnect();
-public:
-	NetworkServer(int numConnections);
-	int ServerBroadcast(char *string);
-	virtual int init(int socketType = STREAM_SOCKET);
-	virtual void shutdown();
-};
 
-class NetworkClient : public NetworkConnection
-{
-private:
-	LPHOSTENT hostEntry;
-	SOCKET theSocket;
-	SOCKADDR_IN hostInfo;
-	string ipAddy;
-public:
-	NetworkClient(string ip);
-	virtual int init(int socketType = STREAM_SOCKET);
-	virtual void shutdown();
-};
 #endif //INC_NETWORKCONNECTION_H

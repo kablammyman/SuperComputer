@@ -2,14 +2,57 @@
 #include <string>
 #include "NetworkConnection.h"
 
-NetworkServer::NetworkServer(int numConnections)
-{
-	numListeningConnections = numConnections;
-}
-
-NetworkClient::NetworkClient(string ip)
+int NetworkConnection::connectToServer(string ip, int socketType)
 {
 	ipAddy = ip;
+	sockVersion = MAKEWORD(1, 1);
+	WSAStartup(sockVersion, &wsaData);
+	FD_ZERO(&master);    // clear the master and temp sets
+	FD_ZERO(&read_fds);
+	int yes = 1;
+
+	if (socketType == STREAM_SOCKET)
+	{
+		theSocket = socket(PF_INET, SOCK_STREAM, 0);
+		setsockopt(theSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(int)); // lose the pesky "address already in use" error message
+	}
+	else
+	{
+		theSocket = socket(PF_INET, SOCK_DGRAM, 0);
+		setsockopt(theSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(int)); // lose the pesky "address already in use" error message
+	}
+
+	if (theSocket == INVALID_SOCKET)
+	{
+		ReportError(WSAGetLastError(), "socket()");
+		WSACleanup();
+		return NETWORK_ERROR;
+	}
+
+	// Fill a SOCKADDR_IN struct with address information of host trying to conenct to
+	remoteInfo.sin_family = AF_INET;
+	remoteInfo.sin_addr.s_addr = inet_addr(ipAddy.c_str());
+	remoteInfo.sin_port = htons(portNumber);// Change to network-byte order and insert into port field THIS HAS TO BE SET TO WHAT THE SERVER PORT IS LISTENING ON FOR DATAGRAM    
+	memset(&(remoteInfo.sin_zero), '\0', 8); // zero the rest of the struct
+
+	FD_SET(theSocket, &master);//for use with select()
+
+							   // Connect to the server
+	if (socketType == STREAM_SOCKET)//if we use this with datagram sokcets, we dont need to senttoand recvFrom...we use send and recv
+	{
+		int nret = connect(theSocket, (LPSOCKADDR)&remoteInfo, sizeof(struct sockaddr));
+		//nret = connect(sockfd, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr));
+
+		if (nret == SOCKET_ERROR)
+		{
+			ReportError(WSAGetLastError(), "connect()");
+			WSACleanup();
+			return NETWORK_ERROR;
+		}
+	}
+
+	// Successfully connected!
+	return NETWORK_OK;
 }
 //------------------------------------------------------------------------------
 void NetworkConnection::ReportError(int errorCode, std::string  whichFunc)
@@ -38,7 +81,7 @@ int NetworkConnection::fillTheirInfo(SOCKADDR_IN *who, SOCKET daSocket)
 	who->sin_port;*/
 }
 //------------------------------------------------------------------------------
-int NetworkServer::init(int socketType)
+int NetworkConnection::startServer(int numConnections, int socketType)
 {
 	SOCKET newSocket;
 	
@@ -48,6 +91,9 @@ int NetworkServer::init(int socketType)
 	FD_ZERO(&read_fds);
 	int yes = 1;
 	int nret;
+	
+	numListeningConnections = numConnections;
+
 	if (socketType == STREAM_SOCKET)
 	{
 		listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -107,7 +153,7 @@ int NetworkServer::init(int socketType)
 	return NETWORK_OK;
 }
 //------------------------------------------------------------------------------
-int NetworkServer::waitForClientConnect()
+int NetworkConnection::waitForClientConnect()
 {
 	SOCKET curClient;
 	int yes = 1;
@@ -124,19 +170,19 @@ int NetworkServer::waitForClientConnect()
 		return NETWORK_ERROR;
 	}
 
-	fillTheirInfo(&theirInfo, curClient);
+	fillTheirInfo(&remoteInfo, curClient);
 
 	clientConnection.push_back(curClient);
-
-	/*clientConnection = INVALID_SOCKET;
+	/*
+	clientConnection = INVALID_SOCKET;
 	while (clientConnection == INVALID_SOCKET)
 	{
 	clientConnection = accept(listeningSocket, NULL, NULL);
 	//clientConnection = accept(listeningSocket,  (struct sockaddr *)&theirInfo ,&sin_size);
 	}
-	clientConnection = listeningSocket; */
+	clientConnection = listeningSocket; 
 
-	/*int sin_size = sizeof(struct sockaddr_in);
+	int sin_size = sizeof(struct sockaddr_in);
 	//Address of a sockaddr structure...Address of a variable containing size of sockaddr struct
 	clientConnection = accept(listeningSocket,  (struct sockaddr *)&theirInfo ,&sin_size);
 	*/
@@ -145,7 +191,7 @@ int NetworkServer::waitForClientConnect()
 
 }
 //------------------------------------------------------------------------------ 
-int NetworkServer::ServerBroadcast(char *string)//for stream sockets
+int NetworkConnection::ServerBroadcast(char *string)//for stream sockets
 {
 	int howManySent = 0;
 	for (size_t n = 0; n < clientConnection.size(); n++)
@@ -158,71 +204,15 @@ int NetworkServer::ServerBroadcast(char *string)//for stream sockets
 	return howManySent;
 }
 //------------------------------------------------------------------------------
-void NetworkServer::shutdown()
+void NetworkConnection::shutdown()
 {
+	closesocket(theSocket);
+
 	for (size_t x = 0; x < clientConnection.size(); x++)
 		closesocket(clientConnection[x]);
 	closesocket(listeningSocket);
 
 	// Shutdown Winsock
-	WSACleanup();
-}
-///////////////////////////////////////////////////////////////////////////////////////////
-int NetworkClient::init(int socketType)
-{
-	sockVersion = MAKEWORD(1, 1);
-	WSAStartup(sockVersion, &wsaData);
-	FD_ZERO(&master);    // clear the master and temp sets
-	FD_ZERO(&read_fds);
-	int yes = 1;
-
-	if (socketType == STREAM_SOCKET)
-	{
-		theSocket = socket(PF_INET, SOCK_STREAM, 0);
-		setsockopt(theSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(int)); // lose the pesky "address already in use" error message
-	}
-	else
-	{
-		theSocket = socket(PF_INET, SOCK_DGRAM, 0);
-		setsockopt(theSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(int)); // lose the pesky "address already in use" error message
-	}
-
-	if (theSocket == INVALID_SOCKET) 
-	{
-		ReportError(WSAGetLastError(), "socket()");
-		WSACleanup();
-		return NETWORK_ERROR;
-	}
-
-	// Fill a SOCKADDR_IN struct with address information of host trying to conenct to
-	hostInfo.sin_family = AF_INET;
-	hostInfo.sin_addr.s_addr = inet_addr(ipAddy.c_str());
-	hostInfo.sin_port = htons(portNumber);// Change to network-byte order and insert into port field THIS HAS TO BE SET TO WHAT THE SERVER PORT IS LISTENING ON FOR DATAGRAM    
-	memset(&(hostInfo.sin_zero), '\0', 8); // zero the rest of the struct
-
-	FD_SET(theSocket, &master);//for use with select()
-
-							   // Connect to the server
-	if (socketType == STREAM_SOCKET)//if we use this with datagram sokcets, we dont need to senttoand recvFrom...we use send and recv
-	{
-		int nret = connect(theSocket, (LPSOCKADDR)&hostInfo, sizeof(struct sockaddr));
-		//nret = connect(sockfd, (struct sockaddr *)&dest_addr, sizeof(struct sockaddr));
-
-		if (nret == SOCKET_ERROR) 
-		{
-			ReportError(WSAGetLastError(), "connect()");
-			WSACleanup();
-			return NETWORK_ERROR;
-		}
-	}
-
-	// Successfully connected!
-	return NETWORK_OK;
-}
-//------------------------------------------------------------------------------
-void NetworkClient::shutdown()
-{
-	closesocket(theSocket);
 	WSACleanup();
 }
 //------------------------------------------------------------------------------ 

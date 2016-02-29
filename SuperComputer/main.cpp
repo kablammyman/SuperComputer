@@ -24,22 +24,36 @@ int main(int argc, char * argv[])
 {
 	vector<string> stringVec;
 	bool done = false;
-	bool isServer = true;
-	string ip;
-	int port;
+	bool isServer;
+	string ip = "127.0.0.1";
+	int port = 2345;
 	NetworkConnection conn;
+
+	if (argc > 1)
+		isServer = true;
+	else
+		isServer = false;
 
 	if (isServer)
 	{
-		conn.startServer(SOMAXCONN);
+		cout << "starting server\n";
+		conn.startServer(SOMAXCONN,port);
 		conn.waitForClientConnect();
 	}
 	else
-		conn.connectToServer(ip);
+	{
+		cout << "connecting to " << ip << "\n";
+		if (conn.connectToServer(ip,port) == NETWORK_ERROR)
+		{
+			exit(-1);
+		}
+	}
 	
+	cout << "connected!\n";
+
 	while (!done)
 	{
-
+		//conn.getData
 			
 	}
 	conn.shutdown();

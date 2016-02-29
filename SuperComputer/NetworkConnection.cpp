@@ -2,7 +2,7 @@
 #include <string>
 #include "NetworkConnection.h"
 
-int NetworkConnection::connectToServer(string ip, int socketType)
+int NetworkConnection::connectToServer(string ip, int port, int socketType)
 {
 	ipAddy = ip;
 	sockVersion = MAKEWORD(1, 1);
@@ -10,7 +10,7 @@ int NetworkConnection::connectToServer(string ip, int socketType)
 	FD_ZERO(&master);    // clear the master and temp sets
 	FD_ZERO(&read_fds);
 	int yes = 1;
-
+	portNumber = port;
 	if (socketType == STREAM_SOCKET)
 	{
 		theSocket = socket(PF_INET, SOCK_STREAM, 0);
@@ -81,10 +81,10 @@ int NetworkConnection::fillTheirInfo(SOCKADDR_IN *who, SOCKET daSocket)
 	who->sin_port;*/
 }
 //------------------------------------------------------------------------------
-int NetworkConnection::startServer(int numConnections, int socketType)
+int NetworkConnection::startServer(int numConnections, int port, int socketType)
 {
 	SOCKET newSocket;
-	
+	portNumber = port;
 	sockVersion = MAKEWORD(1, 1);			// We'd like Winsock version 1.1
 	WSAStartup(sockVersion, &wsaData);
 	FD_ZERO(&master);    // clear the master and temp sets
@@ -188,7 +188,7 @@ int NetworkConnection::waitForClientConnect()
 	*/
 	//sprintf(message,"we started a server listening on port %d",portNumber);
 	// MessageBox(NULL, message, "Server message", MB_OK);
-
+	return NETWORK_OK;
 }
 //------------------------------------------------------------------------------ 
 int NetworkConnection::ServerBroadcast(char *string)//for stream sockets
@@ -196,7 +196,7 @@ int NetworkConnection::ServerBroadcast(char *string)//for stream sockets
 	int howManySent = 0;
 	for (size_t n = 0; n < clientConnection.size(); n++)
 	{
-		int nret = send(clientConnection[n], string, strlen(string), 0);
+		int nret = send(clientConnection[n], string, (int)strlen(string), 0);
 		if (nret != -1)
 			howManySent++;
 	}
@@ -216,9 +216,9 @@ void NetworkConnection::shutdown()
 	WSACleanup();
 }
 //------------------------------------------------------------------------------ 
-int NetworkConnection::sendData(SOCKET daSocket, char *string)//for stream sockets
+int NetworkConnection::sendData(SOCKET daSocket, char *msg)//for stream sockets
 {
-	int nret = send(daSocket, string, strlen(string), 0);
+	int nret = send(daSocket, msg, (int)strlen(msg), 0);
 
 	if (nret == SOCKET_ERROR) 
 	{
@@ -231,10 +231,10 @@ int NetworkConnection::sendData(SOCKET daSocket, char *string)//for stream socke
 }
 
 //------------------------------------------------------------------------------
-int NetworkConnection::getData(SOCKET daSocket, char *string)//for stream sockets
+int NetworkConnection::getData(SOCKET daSocket, char *msg)//for stream sockets
 {
 	int MAX_STRING_LENGTH = 256;
-	int nret = recv(daSocket, string, MAX_STRING_LENGTH, 0);// 256 = Complete size of buffer	  
+	int nret = recv(daSocket, msg, MAX_STRING_LENGTH, 0);// 256 = Complete size of buffer	  
 
 	if (nret == SOCKET_ERROR) 
 	{
@@ -244,11 +244,12 @@ int NetworkConnection::getData(SOCKET daSocket, char *string)//for stream socket
 
 	return nret;// nret contains the number of bytes received
 }
+
 //------------------------------------------------------------------------------   
-int NetworkConnection::sendData(SOCKET daSocket, char *string, SOCKADDR_IN whomToSend)//for datagram sockets
+int NetworkConnection::sendData(SOCKET daSocket, char *msg, SOCKADDR_IN whomToSend)//for datagram sockets
 {
 	int structLength = sizeof(struct sockaddr);
-	int nret = sendto(daSocket, string, strlen(string), 0, (LPSOCKADDR)&whomToSend, structLength);
+	int nret = sendto(daSocket, msg, (int)strlen(msg), 0, (LPSOCKADDR)&whomToSend, structLength);
 
 	if (nret == SOCKET_ERROR) 
 	{
@@ -260,13 +261,13 @@ int NetworkConnection::sendData(SOCKET daSocket, char *string, SOCKADDR_IN whomT
 
 }
 //------------------------------------------------------------------------------
-int NetworkConnection::getData(SOCKET daSocket, char *string, SOCKADDR_IN whosSendingMeStuff)//for datagram sockets
+int NetworkConnection::getData(SOCKET daSocket, char *msg, SOCKADDR_IN whosSendingMeStuff)//for datagram sockets
 {
 	int structLength = sizeof(struct sockaddr);
 	int MAX_STRING_LENGTH = 256;
 
 	//nret = recvfrom(daSocket,string,MAX_STRING_LENGTH,0,(struct sockaddr *)&whosSendingMeStuff,&structLength);
-	int nret = recvfrom(daSocket, string, MAX_STRING_LENGTH, 0, (LPSOCKADDR)&whosSendingMeStuff, &structLength);
+	int nret = recvfrom(daSocket, msg, MAX_STRING_LENGTH, 0, (LPSOCKADDR)&whosSendingMeStuff, &structLength);
 
 	if (nret == SOCKET_ERROR) 
 	{

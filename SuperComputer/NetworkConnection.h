@@ -11,7 +11,11 @@
 #define NETWORK_OK     0
 
 using namespace std;
+/*
+change it so that each "connection" (aka server or client) has its own
+params including port num
 
+have an array of that class*/
 
 class NetworkConnection
 {
@@ -20,6 +24,7 @@ class NetworkConnection
 		DATAGRAM_SOCKET = 0,
 		STREAM_SOCKET 
 	};
+
 	LPHOSTENT hostEntry;
 	SOCKET theSocket;
 	SOCKADDR_IN myInfo;
@@ -46,19 +51,20 @@ public:
 	
 	int waitForClientConnect();
 	
-	int startServer(int numConnections, int socketType = STREAM_SOCKET);
-	int connectToServer(string ip, int socketType = STREAM_SOCKET);
+	int startServer(int numConnections, int port, int socketType = STREAM_SOCKET);
+	int connectToServer(string ip, int port, int socketType = STREAM_SOCKET);
 	void shutdown();
 	
 	
 	//for stream sockets
 	int ServerBroadcast(char *string);
-	int getData(SOCKET daSocket, char *string);
-	int sendData(SOCKET daSocket, char *string);
+	int getData(SOCKET daSocket, char *msg);
+	//int getData(char *msg);
+	int sendData(SOCKET daSocket, char *msg);
 
 	//for datagram sockets
-	int sendData(SOCKET daSocket, char *string, SOCKADDR_IN whomToSend);
-	int getData(SOCKET daSocket, char *string, SOCKADDR_IN whosSendingMeStuff);
+	int sendData(SOCKET daSocket, char *msg, SOCKADDR_IN whomToSend);
+	int getData(SOCKET daSocket, char *msg, SOCKADDR_IN whosSendingMeStuff);
 
 	int changeToNonBlocking(SOCKET daSocket);
 

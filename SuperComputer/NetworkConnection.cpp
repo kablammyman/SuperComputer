@@ -4,7 +4,9 @@
 
 int NetworkConnection::connectToServer(string ip, int port, int socketType)
 {
-	
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+
 	sockVersion = MAKEWORD(1, 1);
 	WSAStartup(sockVersion, &wsaData);
 	FD_ZERO(&master);    // clear the master and temp sets
@@ -87,6 +89,9 @@ int NetworkConnection::fillTheirInfo(SOCKADDR_IN *who, SOCKET daSocket)
 //------------------------------------------------------------------------------
 int NetworkConnection::startServer(int numConnections, int port, int socketType)
 {
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+
 	RemoteComputerConnection remoteConn;
 	sockVersion = MAKEWORD(1, 1);			// We'd like Winsock version 1.1
 	WSAStartup(sockVersion, &wsaData);
@@ -156,7 +161,7 @@ int NetworkConnection::startServer(int numConnections, int port, int socketType)
 	return NETWORK_OK;
 }
 //------------------------------------------------------------------------------
-int NetworkConnection::waitForClientConnect()
+int NetworkConnection::waitForFirstClientConnect()
 {
 	int yes = 1;
 
@@ -174,7 +179,6 @@ int NetworkConnection::waitForClientConnect()
 
 	fillTheirInfo(&remoteConn.remoteInfo, remoteConn.theSocket);
 
-	changeToNonBlocking(remoteConn.theSocket);
 	remoteConnections.push_back(remoteConn);
 	/*
 	clientConnection = INVALID_SOCKET;
@@ -191,6 +195,37 @@ int NetworkConnection::waitForClientConnect()
 	*/
 	//sprintf(message,"we started a server listening on port %d",portNumber);
 	// MessageBox(NULL, message, "Server message", MB_OK);
+	return NETWORK_OK;
+}
+int NetworkConnection::waitForClientAsync()
+{
+	// See if connection pending
+	fd_set readSet;
+	FD_ZERO(&readSet);
+	FD_SET(listeningSocket, &readSet);
+	timeval timeout;
+	timeout.tv_sec = 0;  // Zero timeout (poll)
+	timeout.tv_usec = 0;
+	
+
+	if (select(listeningSocket, &readSet, NULL, NULL, &timeout) == 1)
+	{
+		RemoteComputerConnection remoteConn;
+		int yes = 1;
+		remoteConn.theSocket = accept(listeningSocket, NULL, NULL);
+		setsockopt(remoteConn.theSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&yes, sizeof(int)); // lose the pesky "address already in use" error message
+
+		if (remoteConn.theSocket == INVALID_SOCKET)
+		{
+			ReportError(WSAGetLastError(), "accept()");
+			WSACleanup();
+			return NETWORK_ERROR;
+		}
+
+		fillTheirInfo(&remoteConn.remoteInfo, remoteConn.theSocket);
+
+		remoteConnections.push_back(remoteConn);
+	}
 	return NETWORK_OK;
 }
 //------------------------------------------------------------------------------ 
@@ -287,6 +322,20 @@ int NetworkConnection::changeToNonBlocking(SOCKET daSocket)// Change the socket 
 	return 0;
 }
 //------------------------------------------------------------------------------
+bool NetworkConnection::hasRecivedData(int index)
+{
+	FD_ZERO(&read_fds);
+	FD_SET(remoteConnections[index].theSocket, &read_fds,0);
+
+	int result = select(0, &read_fds, NULL, NULL, &tv);
+	if (result > 0)
+		if (FD_ISSET(remoteConnections[index].theSocket, &read_fds))
+			return true;
+
+	return false;
+	
+
+}
 /*std::string getServerInfo()
 {
 	int length =sizeof(struct sockaddr);

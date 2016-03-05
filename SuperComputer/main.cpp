@@ -39,7 +39,7 @@ int main(int argc, char * argv[])
 	{
 		cout << "starting server\n";
 		conn.startServer(SOMAXCONN,port);
-		conn.waitForClientConnect();
+		conn.waitForFirstClientConnect();
 	}
 	else
 	{
@@ -51,11 +51,12 @@ int main(int argc, char * argv[])
 	}
 	
 	cout << "connected!\n";
-	int counter = 500;
+	int counter = 5;
 	int iResult;
 	string msg = "hello slave...I mean, client!";
 	char recvbuf[DEFAULT_BUFLEN];
 	int recvbuflen = DEFAULT_BUFLEN;
+	srand(time(NULL));
 	string name = "cpu" + to_string(rand() % 100);
 	if (isServer)
 		name = "server";
@@ -63,25 +64,34 @@ int main(int argc, char * argv[])
 	{
 		if (isServer)
 		{
-			if (counter >= 500)
+			conn.waitForClientAsync();
+			if (counter >= 5)
 			{
+				cout << "sending msg \n";
 				conn.ServerBroadcast(msg.c_str());
 				counter = 0;
 			}
 			counter++;
 		}
-
-		iResult = conn.getData(0,recvbuf, DEFAULT_BUFLEN);
-		if (iResult > 0)
+		int x = conn.getNumConnections();
+		for (int i = 0; i < x;  i++)
 		{
-			recvbuf[iResult] = '\0';
-			printf("%s -> %d bytes.\n", recvbuf, iResult);
-			conn.sendData(, name.c_str());
+			if (conn.hasRecivedData(i))
+			{
+				iResult = conn.getData(i, recvbuf, DEFAULT_BUFLEN);
+				if (iResult > 0)
+				{
+					recvbuf[iResult] = '\0';
+					printf("%s -> %d bytes.\n", recvbuf, iResult);
+					if(!isServer)
+						conn.sendData(i, name.c_str());
+				}
+				else if (iResult == 0)
+					done = true;
+				else
+					printf("recv failed: %d\n", WSAGetLastError());
+			}
 		}
-		else if (iResult == 0)
-			done = true;
-		else
-			printf("recv failed: %d\n", WSAGetLastError());
 	}
 	conn.shutdown();
 

@@ -33,16 +33,13 @@ class NetworkConnection
 	};
 
 	LPHOSTENT hostEntry;
-	
 	SOCKADDR_IN myInfo;
 	
-
 	WORD sockVersion;
 	WSADATA wsaData;
 	
-
 	int sockfd;
-	
+	struct timeval tv;
 
 	fd_set master;   // master file descriptor list
 	fd_set read_fds; // temp file descriptor list for select()
@@ -56,8 +53,9 @@ public:
 	void ReportError(int errorCode, std::string  whichFunc);
 	int fillTheirInfo(SOCKADDR_IN *who, SOCKET daSocket);
 	
-	int waitForClientConnect();
-	
+	int waitForFirstClientConnect();
+	int waitForClientAsync();
+
 	int startServer(int numConnections, int port, int socketType = STREAM_SOCKET);
 	int connectToServer(string ip, int port, int socketType = STREAM_SOCKET);
 	void shutdown();
@@ -75,8 +73,9 @@ public:
 	int getData(SOCKET daSocket, char *msg, SOCKADDR_IN whosSendingMeStuff);
 
 	int changeToNonBlocking(SOCKET daSocket);
-
-	
+	size_t getNumConnections() {return remoteConnections.size();}
+	SOCKET getSocket(int index) { return remoteConnections[index].theSocket; }
+	bool hasRecivedData(int index);
 };
 
 

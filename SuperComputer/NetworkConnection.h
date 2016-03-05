@@ -16,6 +16,13 @@ change it so that each "connection" (aka server or client) has its own
 params including port num
 
 have an array of that class*/
+struct RemoteComputerConnection
+{
+	SOCKET theSocket;
+	int portNumber = 0;
+	string ipAddy;
+	SOCKADDR_IN remoteInfo;
+};
 
 class NetworkConnection
 {
@@ -26,16 +33,16 @@ class NetworkConnection
 	};
 
 	LPHOSTENT hostEntry;
-	SOCKET theSocket;
+	
 	SOCKADDR_IN myInfo;
-	SOCKADDR_IN remoteInfo;
+	
 
 	WORD sockVersion;
 	WSADATA wsaData;
-	string ipAddy;
+	
 
 	int sockfd;
-	int portNumber = 0;
+	
 
 	fd_set master;   // master file descriptor list
 	fd_set read_fds; // temp file descriptor list for select()
@@ -43,7 +50,7 @@ class NetworkConnection
 	bool waitingForClients = false;
 	SOCKET listeningSocket;
 	int numListeningConnections;
-	vector<SOCKET> clientConnection;
+	vector<RemoteComputerConnection> remoteConnections;
 
 public:
 	void ReportError(int errorCode, std::string  whichFunc);
@@ -57,13 +64,14 @@ public:
 	
 	
 	//for stream sockets
-	int ServerBroadcast(char *string);
-	int getData(SOCKET daSocket, char *msg);
-	//int getData(char *msg);
-	int sendData(SOCKET daSocket, char *msg);
+	int ServerBroadcast(const char *msg);
+
+	int sendData(int socketIndex, const char *msg);
+	int getData(int socketIndex, char *msg, int dataSize);
+	
 
 	//for datagram sockets
-	int sendData(SOCKET daSocket, char *msg, SOCKADDR_IN whomToSend);
+	int sendData(SOCKET daSocket, const char *msg, SOCKADDR_IN whomToSend);
 	int getData(SOCKET daSocket, char *msg, SOCKADDR_IN whosSendingMeStuff);
 
 	int changeToNonBlocking(SOCKET daSocket);

@@ -1,3 +1,6 @@
+//tread for adding and removing connections?
+//and a thread for work?
+
 #include <string>
 #include <iostream>
 
@@ -30,24 +33,19 @@ using namespace std;
 //SOMAXCONN = socket max amunt of connections?
 
 vector<string> stringVec;
-	bool done = false;
-	bool isServer;
-	string ip = "127.0.0.1";
-	int port = 2345;
-	NetworkConnection conn;
+bool done = false;
+bool isServer = false;
+string ip = "127.0.0.1";
+int port = 2345;
+NetworkConnection conn;
 
 
-
+//sc create "My Sample Service" binPath= C:\SampleService.exe
 
 int main (int argc, TCHAR *argv[])
 {
     OutputDebugString(L"My Sample Service: Main: Entry");
 		
-	if (argc > 1)
-		isServer = true;
-	else
-		isServer = false;
-
     SERVICE_TABLE_ENTRY ServiceTable[] = 
     {
         {SERVICE_NAME, (LPSERVICE_MAIN_FUNCTION) ServiceMain},
@@ -56,8 +54,9 @@ int main (int argc, TCHAR *argv[])
 
     if (StartServiceCtrlDispatcher (ServiceTable) == FALSE)
     {
-       OutputDebugString(L"My Sample Service: Main: StartServiceCtrlDispatcher returned error");
-       return GetLastError ();
+       wstring errorText = L"My Sample Service: Main: StartServiceCtrlDispatcher returned error: " + to_wstring(GetLastError());
+		OutputDebugString(errorText.c_str());
+       return -1;
     }
 
     OutputDebugString(L"My Sample Service: Main: Exit");
@@ -199,6 +198,28 @@ VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
     OutputDebugString(L"My Sample Service: ServiceCtrlHandler: Exit");
 }
 
+void connectToRemote()
+{
+	cout << "connecting to " << ip << "\n";
+	if (conn.connectToServer(ip, port) == NETWORK_ERROR)
+	{
+		exit(-1);
+	}
+}
+
+void broadcastMsg(string msg)
+{
+	cout << "sending msg \n";
+	conn.ServerBroadcast(msg.c_str());
+}
+
+int parseCommand(string cmd)
+{
+	if(cmd == "time")
+		return 0;
+	else if(cmd == "name")
+		return 1;
+}
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
@@ -207,46 +228,23 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 	string msg = "hello slave...I mean, client!";
 	char recvbuf[DEFAULT_BUFLEN];
 	int recvbuflen = DEFAULT_BUFLEN;
-	srand(time(NULL));
-	string name = "cpu" + to_string(rand() % 100);
-	if (isServer)
-		name = "server";
+	int numConn = 0;
 	
 	OutputDebugString(L"My Sample Service: ServiceWorkerThread: Entry");
 
-	if (isServer)
-		{
-			cout << "starting server\n";
-			conn.startServer(SOMAXCONN,port);
-			conn.waitForFirstClientConnect();
-		}
-		else
-		{
-			cout << "connecting to " << ip << "\n";
-			if (conn.connectToServer(ip,port) == NETWORK_ERROR)
-			{
-				exit(-1);
-			}
-		}
-	
-		cout << "connected!\n";
+	cout << "starting server\n";
+	conn.startServer(SOMAXCONN,port);
+	conn.waitForFirstClientConnect();
+		
+	cout << "connected!\n";
 
     //  Periodically check if the service has been requested to stop
     while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
     {        
-			if (isServer)
-			{
-				conn.waitForClientAsync();
-				if (counter >= 5)
-				{
-					cout << "sending msg \n";
-					conn.ServerBroadcast(msg.c_str());
-					counter = 0;
-				}
-				counter++;
-			}
-			int x = conn.getNumConnections();
-			for (int i = 0; i < x;  i++)
+			conn.waitForClientAsync();
+				
+			numConn = conn.getNumConnections();
+			for (int i = 0; i < numConn;  i++)
 			{
 				if (conn.hasRecivedData(i))
 				{
@@ -255,11 +253,29 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 					{
 						recvbuf[iResult] = '\0';
 						printf("%s -> %d bytes.\n", recvbuf, iResult);
-						if(!isServer)
-							conn.sendData(i, name.c_str());
+						
+						switch (parseCommand(recvbuf))
+						{
+						case 0:
+							time_t rawtime;
+							struct tm * timeinfo;
+
+							time(&rawtime);
+							timeinfo = localtime(&rawtime);
+							//printf("The current date/time is: %s", asctime(timeinfo));
+							conn.sendData(i, asctime(timeinfo));
+							break;
+						case 1:
+							conn.sendData(i, "Fred");
+							break;
+						}
+							
 					}
+					//client disconnected
 					else if (iResult == 0)
-						done = true;
+					{
+						conn.closeConnection(i);
+					}
 					else
 						printf("recv failed: %d\n", WSAGetLastError());
 				}
@@ -272,13 +288,4 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 	conn.shutdown();
     return ERROR_SUCCESS;
 }
-int oldmain(int argc, char * argv[])
-{
-	
-	
-
-
-	return 0;
-}
-
 

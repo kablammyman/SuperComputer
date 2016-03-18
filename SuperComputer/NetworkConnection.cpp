@@ -336,6 +336,13 @@ bool NetworkConnection::hasRecivedData(int index)
 	
 
 }
+//------------------------------------------------------------------------------
+void NetworkConnection::closeConnection(int index)
+{
+	closesocket(remoteConnections[index].theSocket);
+	// erase the 6th element: myvector.erase(myvector.begin() + 5);
+	remoteConnections.erase(remoteConnections.begin()+index);
+}
 /*std::string getServerInfo()
 {
 	int length =sizeof(struct sockaddr);

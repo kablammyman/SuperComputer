@@ -76,6 +76,7 @@ public:
 	size_t getNumConnections() {return remoteConnections.size();}
 	SOCKET getSocket(int index) { return remoteConnections[index].theSocket; }
 	bool hasRecivedData(int index);
+	void closeConnection(int index);
 };
 
 

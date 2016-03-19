@@ -219,13 +219,14 @@ int parseCommand(string cmd)
 		return 0;
 	else if(cmd == "name")
 		return 1;
+
+	return -1;
 }
 
 DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 {
     int counter = 5;
 	int iResult;
-	string msg = "hello slave...I mean, client!";
 	char recvbuf[DEFAULT_BUFLEN];
 	int recvbuflen = DEFAULT_BUFLEN;
 	int numConn = 0;
@@ -234,16 +235,15 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 
 	cout << "starting server\n";
 	conn.startServer(SOMAXCONN,port);
-	conn.waitForFirstClientConnect();
-		
-	cout << "connected!\n";
+	//conn.waitForFirstClientConnect();
+	//cout << "connected!\n";
 
     //  Periodically check if the service has been requested to stop
     while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
     {        
 			conn.waitForClientAsync();
 				
-			numConn = conn.getNumConnections();
+			numConn = (int)conn.getNumConnections();
 			for (int i = 0; i < numConn;  i++)
 			{
 				if (conn.hasRecivedData(i))
@@ -268,14 +268,16 @@ DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
 						case 1:
 							conn.sendData(i, "Fred");
 							break;
+						default:
+							conn.sendData(i, "unknown command");
+							break;
 						}
 							
 					}
 					//client disconnected
 					else if (iResult == 0)
-					{
 						conn.closeConnection(i);
-					}
+
 					else
 						printf("recv failed: %d\n", WSAGetLastError());
 				}

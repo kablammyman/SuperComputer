@@ -32,9 +32,7 @@ using namespace std;
 #define NETWORK_OK     0
 //SOMAXCONN = socket max amunt of connections?
 
-vector<string> stringVec;
-bool done = false;
-bool isServer = false;
+
 string ip = "127.0.0.1";
 int port = 2345;
 NetworkConnection conn;

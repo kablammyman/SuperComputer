@@ -21,7 +21,8 @@ HANDLE                g_ServiceStopEvent = INVALID_HANDLE_VALUE;
 
 VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv);
 VOID WINAPI ServiceCtrlHandler (DWORD);
-DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
+DWORD WINAPI doNetWorkCommunication(LPVOID lpParam);
+DWORD WINAPI doDirWatch(LPVOID lpParam);
 
 #define SERVICE_NAME  L"My Sample Service"
 
@@ -36,13 +37,16 @@ using namespace std;
 string ip = "127.0.0.1";
 int port = 2345;
 NetworkConnection conn;
-
+HANDLE hNetworkThread;
+HANDLE hDirWatchThread;
+HANDLE hDir;
 
 //sc create "My Sample Service" binPath= C:\SampleService.exe
 
 int main (int argc, TCHAR *argv[])
 {
-    OutputDebugString(L"My Sample Service: Main: Entry");
+	
+	OutputDebugString(L"My Sample Service: Main: Entry");
 		
     SERVICE_TABLE_ENTRY ServiceTable[] = 
     {
@@ -89,9 +93,12 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
         OutputDebugString(L"My Sample Service: ServiceMain: SetServiceStatus returned error");
     }
 
-    /* 
-     * Perform tasks neccesary to start the service here
-     */
+	//START STUFF
+	cout << "starting server\n";
+	conn.startServer(SOMAXCONN, port);
+	//conn.waitForFirstClientConnect();
+	//cout << "connected!\n";
+
     OutputDebugString(L"My Sample Service: ServiceMain: Performing Service Start Operations");
 
     // Create stop event to wait on later.
@@ -124,20 +131,27 @@ VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
     }
 
     // Start the thread that will perform the main task of the service
-    HANDLE hThread = CreateThread (NULL, 0, ServiceWorkerThread, NULL, 0, NULL);
+
+	hDirWatchThread = CreateThread(NULL, 0, doDirWatch, NULL, 0, NULL);
+	hNetworkThread = CreateThread (NULL, 0, doNetWorkCommunication, NULL, 0, NULL);
 
     OutputDebugString(L"My Sample Service: ServiceMain: Waiting for Worker Thread to complete");
 
-    // Wait until our worker thread exits effectively signaling that the service needs to stop
-    WaitForSingleObject (hThread, INFINITE);
+    // Wait until our main worker thread exits effectively signaling that the service needs to stop
+    WaitForSingleObject (hNetworkThread, INFINITE);
     
     OutputDebugString(L"My Sample Service: ServiceMain: Worker Thread Stop Event signaled");
-    
     
     /* 
      * Perform any cleanup tasks
      */
     OutputDebugString(L"My Sample Service: ServiceMain: Performing Cleanup Operations");
+
+	conn.shutdown();
+	CancelIo(hDir);
+	int exitCode = 0;
+	TerminateThread(hDirWatchThread, exitCode);
+	//CancelIoEx(hDir, overlapped);
 
     CloseHandle (g_ServiceStopEvent);
 
@@ -170,10 +184,9 @@ VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
         if (g_ServiceStatus.dwCurrentState != SERVICE_RUNNING)
            break;
 
-        /* 
-         * Perform tasks neccesary to stop the service here 
-         */
-        
+        //STOP STUFF
+	
+
         g_ServiceStatus.dwControlsAccepted = 0;
         g_ServiceStatus.dwCurrentState = SERVICE_STOP_PENDING;
         g_ServiceStatus.dwWin32ExitCode = 0;
@@ -196,6 +209,135 @@ VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
     OutputDebugString(L"My Sample Service: ServiceCtrlHandler: Exit");
 }
 
+int parseCommand(string cmd)
+{
+	if (cmd == "time")
+		return 0;
+	else if (cmd == "name")
+		return 1;
+
+	return -1;
+}
+//http://qualapps.blogspot.com/2010/05/understanding-readdirectorychangesw.html
+DWORD WINAPI doDirWatch(LPVOID lpParam)
+{
+	wstring dirToWatch = L"C:\\source";
+	int nCounter = 0;
+	FILE_NOTIFY_INFORMATION strFileNotifyInfo[1024];
+	DWORD dwBytesReturned = 0;
+	//LPOVERLAPPED overlapped;
+
+	hDir = CreateFile(
+		dirToWatch.c_str(),
+		FILE_LIST_DIRECTORY,
+		FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,
+		NULL
+		);
+
+	//main thread will close this down
+	for (;;)
+	{
+		if (ReadDirectoryChangesW(hDir, (LPVOID)&strFileNotifyInfo, sizeof(strFileNotifyInfo), TRUE, FILE_NOTIFY_CHANGE_LAST_WRITE, &dwBytesReturned, NULL, NULL) == 0)
+		{
+			OutputDebugString(L"Reading Directory Change");
+		}
+		else
+		{
+			wchar_t* temp = strFileNotifyInfo[0].FileName;
+			wstring msg = L"File Modified: ";
+			wstring h = temp;
+			msg += h;
+			OutputDebugString(msg.c_str());
+			/*
+			ILE_ACTION_ADDED
+			0x00000001
+			The file was added to the directory.
+			FILE_ACTION_REMOVED
+			0x00000002
+			The file was removed from the directory.
+			FILE_ACTION_MODIFIED
+			0x00000003
+			The file was modified. This can be a change in the time stamp or attributes.
+			FILE_ACTION_RENAMED_OLD_NAME
+			0x00000004
+			The file was renamed and this is the old name.
+			FILE_ACTION_RENAMED_NEW_NAME
+			0x00000005
+			The file was renamed and this is the new name.
+
+			*/
+		}
+	}
+}
+
+DWORD WINAPI doNetWorkCommunication(LPVOID lpParam)
+{
+    int counter = 5;
+	int iResult;
+	char recvbuf[DEFAULT_BUFLEN];
+	int recvbuflen = DEFAULT_BUFLEN;
+	int numConn = 0;
+	
+	OutputDebugString(L"My Sample Service: ServiceWorkerThread: Entry");
+
+
+    //  Periodically check if the service has been requested to stop
+    while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
+    {        
+		//socket comm stuff
+		conn.waitForClientAsync();
+				
+		numConn = (int)conn.getNumConnections();
+		for (int i = 0; i < numConn;  i++)
+		{
+			if (conn.hasRecivedData(i))
+			{
+				iResult = conn.getData(i, recvbuf, DEFAULT_BUFLEN);
+				if (iResult > 0)
+				{
+					recvbuf[iResult] = '\0';
+					printf("%s -> %d bytes.\n", recvbuf, iResult);
+						
+					switch (parseCommand(recvbuf))
+					{
+					case 0:
+						time_t rawtime;
+						struct tm * timeinfo;
+
+						time(&rawtime);
+						timeinfo = localtime(&rawtime);
+						//printf("The current date/time is: %s", asctime(timeinfo));
+						conn.sendData(i, asctime(timeinfo));
+						break;
+					case 1:
+						conn.sendData(i, "Fred");
+						break;
+					default:
+						conn.sendData(i, "unknown command");
+						break;
+					}
+							
+				}
+				//client disconnected
+				else if (iResult == 0)
+					conn.closeConnection(i);
+
+				else
+					printf("recv failed: %d\n", WSAGetLastError());
+			}
+		}
+		
+		
+	}
+
+    OutputDebugString(L"My Sample Service: network communication: Exit");
+	
+    return ERROR_SUCCESS;
+}
+
 void connectToRemote()
 {
 	cout << "connecting to " << ip << "\n";
@@ -209,83 +351,5 @@ void broadcastMsg(string msg)
 {
 	cout << "sending msg \n";
 	conn.ServerBroadcast(msg.c_str());
-}
-
-int parseCommand(string cmd)
-{
-	if(cmd == "time")
-		return 0;
-	else if(cmd == "name")
-		return 1;
-
-	return -1;
-}
-
-DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
-{
-    int counter = 5;
-	int iResult;
-	char recvbuf[DEFAULT_BUFLEN];
-	int recvbuflen = DEFAULT_BUFLEN;
-	int numConn = 0;
-	
-	OutputDebugString(L"My Sample Service: ServiceWorkerThread: Entry");
-
-	cout << "starting server\n";
-	conn.startServer(SOMAXCONN,port);
-	//conn.waitForFirstClientConnect();
-	//cout << "connected!\n";
-
-    //  Periodically check if the service has been requested to stop
-    while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
-    {        
-			conn.waitForClientAsync();
-				
-			numConn = (int)conn.getNumConnections();
-			for (int i = 0; i < numConn;  i++)
-			{
-				if (conn.hasRecivedData(i))
-				{
-					iResult = conn.getData(i, recvbuf, DEFAULT_BUFLEN);
-					if (iResult > 0)
-					{
-						recvbuf[iResult] = '\0';
-						printf("%s -> %d bytes.\n", recvbuf, iResult);
-						
-						switch (parseCommand(recvbuf))
-						{
-						case 0:
-							time_t rawtime;
-							struct tm * timeinfo;
-
-							time(&rawtime);
-							timeinfo = localtime(&rawtime);
-							//printf("The current date/time is: %s", asctime(timeinfo));
-							conn.sendData(i, asctime(timeinfo));
-							break;
-						case 1:
-							conn.sendData(i, "Fred");
-							break;
-						default:
-							conn.sendData(i, "unknown command");
-							break;
-						}
-							
-					}
-					//client disconnected
-					else if (iResult == 0)
-						conn.closeConnection(i);
-
-					else
-						printf("recv failed: %d\n", WSAGetLastError());
-				}
-			}
-		
-		
-	}
-
-    OutputDebugString(L"My Sample Service: ServiceWorkerThread: Exit");
-	conn.shutdown();
-    return ERROR_SUCCESS;
 }
 

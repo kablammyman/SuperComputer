@@ -2,8 +2,12 @@
 //
 
 #include "stdafx.h"
+#include <vector>
+#include <string>
+
 #include "NetworkConnection.h"
 
+using namespace std;
 
 #define DEFAULT_BUFLEN 512
 
@@ -13,15 +17,15 @@ int main()
 	bool done = false;
 	bool isServer = false;
 	string ip = "127.0.0.1";
-	int port = 2345;
+	int port = 2346;//port for createImageHash
 	NetworkConnection conn;
 
-	conn.connectToServer(ip, port);
+	int success = conn.connectToServer(ip, port);
 
 	int i = 0;
 	char recvbuf[DEFAULT_BUFLEN];
 	int recvbuflen = DEFAULT_BUFLEN;
-	conn.sendData(i, "time");
+	conn.sendData(i, "-hash,C:\\Users\\Victor\\Desktop\\Imagens\\rad1E0A3.jpg");
 	do {
 		if (conn.hasRecivedData(i))
 		{
